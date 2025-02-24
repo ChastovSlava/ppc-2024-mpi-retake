@@ -15,7 +15,7 @@
 
 namespace {
 bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon = 1e-9);
-}
+}  // namespace
 
 TEST(chastov_v_algorithm_cannon_mpi, test_pipeline_run) {
   boost::mpi::communicator world;
