@@ -2,45 +2,37 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <memory>
 #include <vector>
 
-#include "boost/mpi/communicator.hpp"
 #include "core/perf/include/perf.hpp"
-#include "core/task/include/task.hpp"
 #include "mpi/chastov_v_algorithm_cannon/include/ops_mpi.hpp"
 
-namespace {
-bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon = 1e-9);
-}
+static bool compareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon = 1e-9);
 
 TEST(chastov_v_algorithm_cannon_mpi, test_pipeline_run) {
   boost::mpi::communicator world;
-  int k_matrix = 500;
+  int kMatrix = 500;
 
   // Create data
   std::vector<double> matrix1;
   std::vector<double> matrix2;
-  std::vector<double> result_matrix;
+  std::vector<double> resultMatrix;
 
   // Create task_data
   auto task_data_mpi = std::make_shared<ppc::core::TaskData>();
   if (world.rank() == 0) {
-    matrix1 = std::vector<double>(k_matrix * k_matrix, 0.0);
-    matrix2 = std::vector<double>(k_matrix * k_matrix, 1.0);
-    result_matrix = std::vector<double>(k_matrix * k_matrix);
+    matrix1 = std::vector<double>(kMatrix * kMatrix, 0.0);
+    matrix2 = std::vector<double>(kMatrix * kMatrix, 1.0);
+    resultMatrix = std::vector<double>(kMatrix * kMatrix);
 
     task_data_mpi->inputs.emplace_back(reinterpret_cast<uint8_t *>(matrix1.data()));
     task_data_mpi->inputs_count.emplace_back(matrix1.size());
     task_data_mpi->inputs.emplace_back(reinterpret_cast<uint8_t *>(matrix2.data()));
     task_data_mpi->inputs_count.emplace_back(matrix2.size());
-    task_data_mpi->inputs.emplace_back(reinterpret_cast<uint8_t *>(&k_matrix));
+    task_data_mpi->inputs.emplace_back(reinterpret_cast<uint8_t *>(&kMatrix));
     task_data_mpi->inputs_count.emplace_back(1);
-    task_data_mpi->outputs.emplace_back(reinterpret_cast<uint8_t *>(&result_matrix));
-    task_data_mpi->outputs_count.emplace_back(result_matrix.size());
+    task_data_mpi->outputs.emplace_back(reinterpret_cast<uint8_t *>(&resultMatrix));
+    task_data_mpi->outputs_count.emplace_back(resultMatrix.size());
   }
 
   // Create Task
@@ -68,34 +60,34 @@ TEST(chastov_v_algorithm_cannon_mpi, test_pipeline_run) {
   perf_analyzer->PipelineRun(perf_attr, perf_results);
   if (world.rank() == 0) {
     ppc::core::Perf::PrintPerfStatistic(perf_results);
-    ASSERT_TRUE(CompareMatrices(matrix1, result_matrix));
+    ASSERT_TRUE(compareMatrices(matrix1, resultMatrix));
   }
 }
 
 TEST(chastov_v_algorithm_cannon_mpi, test_task_run) {
   boost::mpi::communicator world;
-  int k_matrix = 500;
+  int kMatrix = 500;
 
   // Create data
   std::vector<double> matrix1;
   std::vector<double> matrix2;
-  std::vector<double> result_matrix;
+  std::vector<double> resultMatrix;
 
   // Create TaskData
   auto task_data_mpi = std::make_shared<ppc::core::TaskData>();
   if (world.rank() == 0) {
-    matrix1 = std::vector<double>(k_matrix * k_matrix, 0.0);
-    matrix2 = std::vector<double>(k_matrix * k_matrix, 1.0);
-    result_matrix = std::vector<double>(k_matrix * k_matrix, 0.0);
+    matrix1 = std::vector<double>(kMatrix * kMatrix, 0.0);
+    matrix2 = std::vector<double>(kMatrix * kMatrix, 1.0);
+    resultMatrix = std::vector<double>(kMatrix * kMatrix, 0.0);
 
     task_data_mpi->inputs.emplace_back(reinterpret_cast<uint8_t *>(matrix1.data()));
     task_data_mpi->inputs_count.emplace_back(matrix1.size());
     task_data_mpi->inputs.emplace_back(reinterpret_cast<uint8_t *>(matrix2.data()));
     task_data_mpi->inputs_count.emplace_back(matrix2.size());
-    task_data_mpi->inputs.emplace_back(reinterpret_cast<uint8_t *>(&k_matrix));
+    task_data_mpi->inputs.emplace_back(reinterpret_cast<uint8_t *>(&kMatrix));
     task_data_mpi->inputs_count.emplace_back(1);
-    task_data_mpi->outputs.emplace_back(reinterpret_cast<uint8_t *>(&result_matrix));
-    task_data_mpi->outputs_count.emplace_back(result_matrix.size());
+    task_data_mpi->outputs.emplace_back(reinterpret_cast<uint8_t *>(&resultMatrix));
+    task_data_mpi->outputs_count.emplace_back(resultMatrix.size());
   }
 
   auto test_task_mpi = std::make_shared<chastov_v_algorithm_cannon_mpi::TestTaskMPI>(task_data_mpi);
@@ -122,15 +114,12 @@ TEST(chastov_v_algorithm_cannon_mpi, test_task_run) {
   perf_analyzer->TaskRun(perf_attr, perf_results);
   if (world.rank() == 0) {
     ppc::core::Perf::PrintPerfStatistic(perf_results);
-    ASSERT_TRUE(CompareMatrices(matrix1, result_matrix));
+    ASSERT_TRUE(compareMatrices(matrix1, resultMatrix));
   }
 }
 
-namespace {
-bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon) {
-  if (mat1.size() != mat2.size()) {
-    return false;
-  }
+static bool compareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon) {
+  if (mat1.size() != mat2.size()) return false;
   for (size_t i = 0; i < mat1.size(); ++i) {
     if (std::abs(mat1[i] - mat2[i]) > epsilon) {
       return false;
@@ -138,4 +127,3 @@ bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> 
   }
   return true;
 }
-}  // namespace

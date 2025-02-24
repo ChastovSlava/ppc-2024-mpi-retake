@@ -1,12 +1,10 @@
 // Copyright 2023 Nesterov Alexander
 #pragma once
 
-#include <mpi.h>
+#include <gtest/gtest.h>
 
 #include <boost/mpi/collectives.hpp>
 #include <boost/mpi/communicator.hpp>
-#include <cstddef>
-#include <utility>
 #include <vector>
 
 #include "core/task/include/task.hpp"
@@ -20,23 +18,11 @@ class TestTaskMPI : public ppc::core::Task {
   bool ValidationImpl() override;
   bool RunImpl() override;
   bool PostProcessingImpl() override;
-  [[nodiscard]] int CalculateBlockSize(int size) const;
-  MPI_Comm CreateSubCommunicator(int rank, int block_size);
-  void DistributeMatrixBlocks(const std::vector<double>& matrix, std::vector<double>& temp_vec, int block_size,
-                              int submatrix_size);
-  bool PerformCannonAlgorithm(boost::mpi::communicator& sub_world, std::vector<double>& block_1,
-                              std::vector<double>& block_2, std::vector<double>& block_c, int block_size,
-                              int submatrix_size);
-  void ShiftBlocks(boost::mpi::communicator& sub_world, std::vector<double>& block, int send_rank, int recv_rank);
-  void MultiplyBlocks(const std::vector<double>& block_1, const std::vector<double>& block_2,
-                      std::vector<double>& block_c, int submatrix_size);
-  void AssembleResultMatrix(const std::vector<double>& collected_vec, std::vector<double>& result_matrix,
-                            int block_size, int submatrix_size);
 
  private:
   size_t matrix_size_{}, total_elements_{};
   std::vector<double> first_matrix_, second_matrix_, result_matrix_;
-  boost::mpi::communicator world_;
+  boost::mpi::communicator world;
 };
 
 }  // namespace chastov_v_algorithm_cannon_mpi
