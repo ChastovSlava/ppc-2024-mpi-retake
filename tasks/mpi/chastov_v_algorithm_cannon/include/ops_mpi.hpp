@@ -18,6 +18,18 @@ class TestTaskMPI : public ppc::core::Task {
   bool ValidationImpl() override;
   bool RunImpl() override;
   bool PostProcessingImpl() override;
+  int calculateBlockSize(int size);
+  MPI_Comm createSubCommunicator(int rank, int block_size);
+  void distributeMatrixBlocks(const std::vector<double>& matrix, std::vector<double>& temp_vec, int block_size,
+                              int submatrix_size);
+  bool performCannonAlgorithm(boost::mpi::communicator& sub_world, std::vector<double>& block_1,
+                              std::vector<double>& block_2, std::vector<double>& block_c, int block_size,
+                              int submatrix_size);
+  void shiftBlocks(boost::mpi::communicator& sub_world, std::vector<double>& block, int send_rank, int recv_rank);
+  void multiplyBlocks(const std::vector<double>& block_1, const std::vector<double>& block_2,
+                      std::vector<double>& block_c, int submatrix_size);
+  void assembleResultMatrix(const std::vector<double>& collected_vec, std::vector<double>& result_matrix,
+                            int block_size, int submatrix_size);
 
  private:
   size_t matrix_size_{}, total_elements_{};

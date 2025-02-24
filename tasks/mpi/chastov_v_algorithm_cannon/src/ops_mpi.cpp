@@ -48,7 +48,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::ValidationImpl() {
   return true;
 }
 
-bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
+/*bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
   int rank = world_.rank();
   int size = world_.size();
 
@@ -232,6 +232,178 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
     }
   }
   return true;
+}*/
+
+bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
+  int rank = world_.rank();
+  int size = world_.size();
+
+  boost::mpi::broadcast(world_, matrix_size_, 0);
+  boost::mpi::broadcast(world_, total_elements_, 0);
+
+  int block_size = calculateBlockSize(size);
+  int submatrix_size = matrix_size_ / block_size;
+
+  MPI_Comm sub_comm = createSubCommunicator(rank, block_size);
+  if (sub_comm == MPI_COMM_NULL) {
+    return true; // Processes not part of the computation
+  }
+
+  boost::mpi::communicator sub_world(sub_comm, boost::mpi::comm_take_ownership);
+  rank = sub_world.rank();
+  size = sub_world.size();
+
+  std::vector<double> temp_vec_1(total_elements_);
+  std::vector<double> temp_vec_2(total_elements_);
+  if (rank == 0) {
+    distributeMatrixBlocks(first_matrix_, temp_vec_1, block_size, submatrix_size);
+    distributeMatrixBlocks(second_matrix_, temp_vec_2, block_size, submatrix_size);
+  }
+
+  std::vector<double> block_1(submatrix_size * submatrix_size);
+  std::vector<double> block_2(submatrix_size * submatrix_size);
+  std::vector<double> block_c(submatrix_size * submatrix_size, 0.0);
+  std::vector<double> collected_vec(total_elements_);
+
+  boost::mpi::scatter(sub_world, temp_vec_1, block_1.data(), submatrix_size * submatrix_size, 0);
+  boost::mpi::scatter(sub_world, temp_vec_2, block_2.data(), submatrix_size * submatrix_size, 0);
+
+  if (!performCannonAlgorithm(sub_world, block_1, block_2, block_c, block_size, submatrix_size)) {
+    return false;
+  }
+
+  boost::mpi::gather(sub_world, block_c.data(), block_c.size(), collected_vec, 0);
+  if (rank == 0) {
+    assembleResultMatrix(collected_vec, result_matrix_, block_size, submatrix_size);
+  }
+
+  return true;
+}
+
+// Helper function to calculate block size
+int chastov_v_algorithm_cannon_mpi::TestTaskMPI::calculateBlockSize(int size) {
+  int block_size = std::floor(std::sqrt(size));
+  while (block_size > 0) {
+    if (matrix_size_ % block_size == 0) {
+      break;
+    }
+    --block_size;
+  }
+  return std::max(block_size, 1);
+}
+
+// Helper function to create sub-communicator
+MPI_Comm chastov_v_algorithm_cannon_mpi::TestTaskMPI::createSubCommunicator(int rank, int block_size) {
+  int group_color = (rank < block_size * block_size) ? 1 : MPI_UNDEFINED;
+  MPI_Comm sub_comm;
+  MPI_Comm_split(world_, group_color, rank, &sub_comm);
+  return sub_comm;
+}
+
+// Helper function to distribute matrix blocks
+void chastov_v_algorithm_cannon_mpi::TestTaskMPI::distributeMatrixBlocks(
+    const std::vector<double>& matrix, std::vector<double>& temp_vec, int block_size, int submatrix_size) {
+  int index = 0;
+  for (int block_row = 0; block_row < block_size; ++block_row) {
+    for (int block_col = 0; block_col < block_size; ++block_col) {
+      for (int i = 0; i < submatrix_size; ++i) {
+        for (int j = 0; j < submatrix_size; ++j) {
+          temp_vec[index + i * submatrix_size + j] =
+              matrix[(block_row * submatrix_size + i) * matrix_size_ + (block_col * submatrix_size + j)];
+        }
+      }
+      index += submatrix_size * submatrix_size;
+    }
+  }
+}
+
+// Helper function to perform Cannon's algorithm
+bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::performCannonAlgorithm(
+    boost::mpi::communicator& sub_world, std::vector<double>& block_1, std::vector<double>& block_2,
+    std::vector<double>& block_c, int block_size, int submatrix_size) {
+  int rank = sub_world.rank();
+  int size = sub_world.size();
+
+  int row = rank / block_size;
+  int col = rank % block_size;
+
+  int send_vec_1_rank = (row * block_size) + ((col + block_size - 1) % block_size);
+  int recv_vec_1_rank = (row * block_size) + ((col + 1) % block_size);
+
+  if (send_vec_1_rank >= size || recv_vec_1_rank >= size) {
+    return false;
+  }
+
+  int send_vec_2_rank = col + block_size * ((row + block_size - 1) % block_size);
+  int recv_vec_2_rank = col + block_size * ((row + 1) % block_size);
+
+  if (send_vec_2_rank >= size || recv_vec_2_rank >= size) {
+    return false;
+  }
+
+  for (int i = 0; i < row; ++i) {
+    shiftBlocks(sub_world, block_1, send_vec_1_rank, recv_vec_1_rank);
+  }
+
+  for (int i = 0; i < col; ++i) {
+    shiftBlocks(sub_world, block_2, send_vec_2_rank, recv_vec_2_rank);
+  }
+
+  multiplyBlocks(block_1, block_2, block_c, submatrix_size);
+
+  for (int iter = 0; iter < block_size - 1; ++iter) {
+    shiftBlocks(sub_world, block_1, send_vec_1_rank, recv_vec_1_rank);
+    shiftBlocks(sub_world, block_2, send_vec_2_rank, recv_vec_2_rank);
+    multiplyBlocks(block_1, block_2, block_c, submatrix_size);
+  }
+
+  return true;
+}
+
+// Helper function to shift blocks between processes
+void chastov_v_algorithm_cannon_mpi::TestTaskMPI::shiftBlocks(
+    boost::mpi::communicator& sub_world, std::vector<double>& block, int send_rank, int recv_rank) {
+  boost::mpi::request send_req = sub_world.isend(send_rank, 0, block.data(), block.size());
+  std::vector<double> buffer(block.size());
+  boost::mpi::request recv_req = sub_world.irecv(recv_rank, 0, buffer.data(), buffer.size());
+
+  if (send_req.active() && recv_req.active()) {
+    send_req.wait();
+    recv_req.wait();
+  }
+  block = buffer;
+}
+
+// Helper function to multiply blocks
+void chastov_v_algorithm_cannon_mpi::TestTaskMPI::multiplyBlocks(
+    const std::vector<double>& block_1, const std::vector<double>& block_2,
+    std::vector<double>& block_c, int submatrix_size) {
+  for (int i = 0; i < submatrix_size; ++i) {
+    for (int j = 0; j < submatrix_size; ++j) {
+      for (int k = 0; k < submatrix_size; ++k) {
+        block_c[i * submatrix_size + j] += block_1[i * submatrix_size + k] * block_2[k * submatrix_size + j];
+      }
+    }
+  }
+}
+
+// Helper function to assemble the result matrix
+void chastov_v_algorithm_cannon_mpi::TestTaskMPI::assembleResultMatrix(
+    const std::vector<double>& collected_vec, std::vector<double>& result_matrix, int block_size, int submatrix_size) {
+  for (int block_row = 0; block_row < block_size; ++block_row) {
+    for (int block_col = 0; block_col < block_size; ++block_col) {
+      int block_rank = block_row * block_size + block_col;
+      int block_index = block_rank * submatrix_size * submatrix_size;
+
+      for (int i = 0; i < submatrix_size; ++i) {
+        for (int j = 0; j < submatrix_size; ++j) {
+          int global_row = block_row * submatrix_size + i;
+          int global_col = block_col * submatrix_size + j;
+          result_matrix[global_row * matrix_size_ + global_col] = collected_vec[block_index + i * submatrix_size + j];
+        }
+      }
+    }
+  }
 }
 
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PostProcessingImpl() {
