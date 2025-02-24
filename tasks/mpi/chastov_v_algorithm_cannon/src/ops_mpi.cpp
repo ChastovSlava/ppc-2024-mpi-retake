@@ -4,13 +4,15 @@
 #include <mpi.h>
 
 #include <algorithm>
+#include <boost/mpi/collectives.hpp>
+#include <boost/mpi/communicator.hpp>
 #include <cmath>
 #include <vector>
 
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PreProcessingImpl() {
-  if (world.rank() == 0) {
-    double* first = reinterpret_cast<double*>(task_data->inputs[0]);
-    double* second = reinterpret_cast<double*>(task_data->inputs[1]);
+  if (world_.rank() == 0) {
+    auto* first = reinterpret_cast<double*>(task_data->inputs[0]);
+    auto* second = reinterpret_cast<double*>(task_data->inputs[1]);
 
     first_matrix_ = std::vector<double>(first, first + total_elements_);
     second_matrix_ = std::vector<double>(second, second + total_elements_);
@@ -22,7 +24,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PreProcessingImpl() {
 }
 
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::ValidationImpl() {
-  if (world.rank() == 0) {
+  if (world_.rank() == 0) {
     if (task_data->inputs[2] != nullptr) {
       matrix_size_ = reinterpret_cast<int*>(task_data->inputs[2])[0];
     }
@@ -47,11 +49,11 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::ValidationImpl() {
 }
 
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
-  int rank = world.rank();
-  int size = world.size();
+  int rank = world_.rank();
+  int size = world_.size();
 
-  boost::mpi::broadcast(world, matrix_size_, 0);
-  boost::mpi::broadcast(world, total_elements_, 0);
+  boost::mpi::broadcast(world_, matrix_size_, 0);
+  boost::mpi::broadcast(world_, total_elements_, 0);
 
   int block_size = std::floor(std::sqrt(size));
   while (block_size > 0) {
@@ -71,7 +73,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
   }
 
   MPI_Comm sub_comm;
-  MPI_Comm_split(world, group_color, rank, &sub_comm);
+  MPI_Comm_split(world_, group_color, rank, &sub_comm);
 
   if (group_color == MPI_UNDEFINED) {
     return true;
@@ -108,7 +110,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
 
   std::vector<double> block_1(submatrix_size * submatrix_size);
   std::vector<double> block_2(submatrix_size * submatrix_size);
-  std::vector<double> local_C(submatrix_size * submatrix_size, 0.0);
+  std::vector<double> block_c(submatrix_size * submatrix_size, 0.0);
   std::vector<double> collected_vec(total_elements_);
 
   boost::mpi::scatter(sub_world, temp_vec_1, block_1.data(), submatrix_size * submatrix_size, 0);
@@ -117,8 +119,8 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
   int row = rank / block_size;
   int col = rank % block_size;
 
-  int send_vec_1_rank = row * block_size + (col + block_size - 1) % block_size;
-  int recv_vec_1_rank = row * block_size + (col + 1) % block_size;
+  int send_vec_1_rank = (row * block_size) + ((col + block_size - 1) % block_size);
+  int recv_vec_1_rank = (row * block_size) + ((col + 1) % block_size);
 
   if (send_vec_1_rank >= size || recv_vec_1_rank >= size) {
     return false;
@@ -170,7 +172,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
   for (int i = 0; i < submatrix_size; ++i) {
     for (int j = 0; j < submatrix_size; ++j) {
       for (int k = 0; k < submatrix_size; ++k) {
-        local_C[i * submatrix_size + j] += block_1[i * submatrix_size + k] * block_2[k * submatrix_size + j];
+        block_c[i * submatrix_size + j] += block_1[i * submatrix_size + k] * block_2[k * submatrix_size + j];
       }
     }
   }
@@ -205,13 +207,13 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
     for (int i = 0; i < submatrix_size; ++i) {
       for (int j = 0; j < submatrix_size; ++j) {
         for (int k = 0; k < submatrix_size; ++k) {
-          local_C[i * submatrix_size + j] += block_1[i * submatrix_size + k] * block_2[k * submatrix_size + j];
+          block_c[i * submatrix_size + j] += block_1[i * submatrix_size + k] * block_2[k * submatrix_size + j];
         }
       }
     }
   }
 
-  boost::mpi::gather(sub_world, local_C.data(), local_C.size(), collected_vec, 0);
+  boost::mpi::gather(sub_world, block_c.data(), block_c.size(), collected_vec, 0);
   if (rank == 0) {
     for (int block_row = 0; block_row < block_size; ++block_row) {
       for (int block_col = 0; block_col < block_size; ++block_col) {
@@ -233,7 +235,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
 }
 
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PostProcessingImpl() {
-  if (world.rank() == 0) {
+  if (world_.rank() == 0) {
     auto* output = reinterpret_cast<std::vector<double>*>(task_data->outputs[0]);
     output->assign(result_matrix_.begin(), result_matrix_.end());
   }
