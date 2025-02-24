@@ -1,12 +1,11 @@
 // Copyright 2024 Nesterov Alexander
 #include "seq/chastov_v_algorithm_cannon/include/ops_seq.hpp"
 
-#include <algorithm>
 #include <vector>
 
 bool chastov_v_algorithm_cannon_seq::TestTaskSequential::PreProcessingImpl() {
-  double* first = reinterpret_cast<double*>(task_data->inputs[0]);
-  double* second = reinterpret_cast<double*>(task_data->inputs[1]);
+  auto* first = reinterpret_cast<double*>(task_data->inputs[0]);
+  auto* second = reinterpret_cast<double*>(task_data->inputs[1]);
 
   first_matrix_ = std::vector<double>(first, first + total_elements_);
   second_matrix_ = std::vector<double>(second, second + total_elements_);
@@ -40,9 +39,9 @@ bool chastov_v_algorithm_cannon_seq::TestTaskSequential::RunImpl() {
     for (size_t j = 0; j < matrix_size_; ++j) {
       double sum = 0.0;
       for (size_t k = 0; k < matrix_size_; ++k) {
-        sum += first_matrix_[i * matrix_size_ + k] * second_matrix_[k * matrix_size_ + j];
+        sum += first_matrix_[(i * matrix_size_) + k] * second_matrix_[(k * matrix_size_) + j];
       }
-      result_matrix_[i * matrix_size_ + j] = sum;
+      result_matrix_[(i * matrix_size_) + j] = sum;
     }
   }
 
