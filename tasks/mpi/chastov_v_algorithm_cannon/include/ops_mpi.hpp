@@ -1,10 +1,10 @@
 // Copyright 2023 Nesterov Alexander
 #pragma once
 
-#include <gtest/gtest.h>
-
 #include <boost/mpi/collectives.hpp>
 #include <boost/mpi/communicator.hpp>
+#include <cstddef>
+#include <utility>
 #include <vector>
 
 #include "core/task/include/task.hpp"
@@ -22,7 +22,7 @@ class TestTaskMPI : public ppc::core::Task {
  private:
   size_t matrix_size_{}, total_elements_{};
   std::vector<double> first_matrix_, second_matrix_, result_matrix_;
-  boost::mpi::communicator world;
+  boost::mpi::communicator world_;
 };
 
 }  // namespace chastov_v_algorithm_cannon_mpi
