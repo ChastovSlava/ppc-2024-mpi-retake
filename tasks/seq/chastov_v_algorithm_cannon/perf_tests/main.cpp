@@ -1,10 +1,15 @@
 // Copyright 2023 Nesterov Alexander
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "core/perf/include/perf.hpp"
+#include "core/task/include/task.hpp"
 #include "seq/chastov_v_algorithm_cannon/include/ops_seq.hpp"
 
 namespace {

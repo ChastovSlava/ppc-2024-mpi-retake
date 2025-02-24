@@ -1,6 +1,7 @@
 // Copyright 2024 Nesterov Alexander
 #include "seq/chastov_v_algorithm_cannon/include/ops_seq.hpp"
 
+#include <cstddef>
 #include <vector>
 
 bool chastov_v_algorithm_cannon_seq::TestTaskSequential::PreProcessingImpl() {

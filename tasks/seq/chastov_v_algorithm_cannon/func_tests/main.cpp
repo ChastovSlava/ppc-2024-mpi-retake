@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <random>
+#include <ranges>
 #include <vector>
 
 #include "core/task/include/task.hpp"
@@ -19,14 +20,14 @@ std::vector<double> GenerationRandVector(int size) {
   std::uniform_real_distribution<double> dist(-100.0, 100.0);
 
   std::vector<double> vec(size);
-  std::generate(vec.begin(), vec.end(), [&gen, &dist]() { return dist(gen); });
+  std::ranges::generate(vec, [&gen, &dist]() { return dist(gen); });
   return vec;
 }
 }  // namespace
 
 namespace {
-static std::vector<double> Multiplication(const std::vector<double> &matrix1, const std::vector<double> &matrix2,
-                                          size_t size) {
+std::vector<double> Multiplication(const std::vector<double> &matrix1, const std::vector<double> &matrix2,
+                                   size_t size) {
   std::vector<double> result(size * size, 0.0);
 
   const double *ptr1 = matrix1.data();
