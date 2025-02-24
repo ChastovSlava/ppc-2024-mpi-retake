@@ -3,16 +3,23 @@
 
 #include <algorithm>
 #include <boost/mpi/communicator.hpp>
-#include <boost/mpi/environment.hpp>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <random>
 #include <vector>
 
+// #include "core/task/include/task_data.hpp"
 #include "mpi/chastov_v_algorithm_cannon/include/ops_mpi.hpp"
 
-static bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon = 1e-9);
+namespace {
+bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon = 1e-9);
+std::vector<double> GenerationRandVector(int size);
+}  // namespace
 
-static std::vector<double> GenerationRandVector(int size) {
+namespace {
+std::vector<double> GenerationRandVector(int size) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> dist(-100.0, 100.0);
@@ -21,6 +28,7 @@ static std::vector<double> GenerationRandVector(int size) {
   std::generate(vec.begin(), vec.end(), [&gen, &dist]() { return dist(gen); });
   return vec;
 }
+}  // namespace
 
 TEST(chastov_v_algorithm_cannon_mpi, test_empty) {
   boost::mpi::communicator world;
@@ -384,8 +392,11 @@ TEST(chastov_v_algorithm_cannon_mpi, test_diagonal_matrix) {
   }
 }
 
-static bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon) {
-  if (mat1.size() != mat2.size()) return false;
+namespace {
+bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon) {
+  if (mat1.size() != mat2.size()) {
+    return false;
+  }
   for (size_t i = 0; i < mat1.size(); ++i) {
     if (std::abs(mat1[i] - mat2[i]) > epsilon) {
       return false;
@@ -393,3 +404,4 @@ static bool CompareMatrices(const std::vector<double> &mat1, const std::vector<d
   }
   return true;
 }
+}  // namespace

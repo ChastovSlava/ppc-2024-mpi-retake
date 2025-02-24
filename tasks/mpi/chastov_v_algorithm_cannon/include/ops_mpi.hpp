@@ -1,6 +1,8 @@
 // Copyright 2023 Nesterov Alexander
 #pragma once
 
+#include <mpi.h>
+
 #include <boost/mpi/collectives.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <cstddef>
@@ -18,7 +20,7 @@ class TestTaskMPI : public ppc::core::Task {
   bool ValidationImpl() override;
   bool RunImpl() override;
   bool PostProcessingImpl() override;
-  int CalculateBlockSize(int size);
+  int CalculateBlockSize(int size) const;
   MPI_Comm CreateSubCommunicator(int rank, int block_size);
   void DistributeMatrixBlocks(const std::vector<double>& matrix, std::vector<double>& temp_vec, int block_size,
                               int submatrix_size);

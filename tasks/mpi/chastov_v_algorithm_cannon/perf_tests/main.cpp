@@ -2,6 +2,8 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -11,7 +13,9 @@
 #include "core/task/include/task.hpp"
 #include "mpi/chastov_v_algorithm_cannon/include/ops_mpi.hpp"
 
+namespace {
 bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon = 1e-9);
+}
 
 TEST(chastov_v_algorithm_cannon_mpi, test_pipeline_run) {
   boost::mpi::communicator world;
@@ -122,8 +126,11 @@ TEST(chastov_v_algorithm_cannon_mpi, test_task_run) {
   }
 }
 
+namespace {
 bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> &mat2, double epsilon) {
-  if (mat1.size() != mat2.size()) return false;
+  if (mat1.size() != mat2.size()) {
+    return false;
+  }
   for (size_t i = 0; i < mat1.size(); ++i) {
     if (std::abs(mat1[i] - mat2[i]) > epsilon) {
       return false;
@@ -131,3 +138,4 @@ bool CompareMatrices(const std::vector<double> &mat1, const std::vector<double> 
   }
   return true;
 }
+}  // namespace
