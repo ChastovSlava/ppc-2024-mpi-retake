@@ -321,6 +321,10 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PerformCannonAlgorithm(boost::
                                                                          std::vector<double>& block_2,
                                                                          std::vector<double>& block_c, int block_size,
                                                                          int submatrix_size) {
+  if (sub_world == MPI_COMM_NULL) {
+    return false;
+  }
+
   const int rank = sub_world.rank();
   const int size = sub_world.size();
 
@@ -367,6 +371,10 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PerformCannonAlgorithm(boost::
 void chastov_v_algorithm_cannon_mpi::TestTaskMPI::ShiftBlocks(boost::mpi::communicator& sub_world,
                                                               std::vector<double>& block, int send_rank,
                                                               int recv_rank) {
+  if (sub_world == MPI_COMM_NULL) {
+    return;
+  }
+
   boost::mpi::request send_req = sub_world.isend(send_rank, 0, block.data(), block.size());
   std::vector<double> buffer(block.size());
   boost::mpi::request recv_req = sub_world.irecv(recv_rank, 0, buffer.data(), buffer.size());
