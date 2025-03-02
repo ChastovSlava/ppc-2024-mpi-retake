@@ -305,7 +305,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
   std::vector<double> collected_vec(total_elements_);
 
   // Используем std::size_t для хранения размеров блоков
-  auto block_data_size = static_cast<std::size_t>(submatrix_size * submatrix_size);
+  auto block_data_size = static_cast<std::size_t>(submatrix_size) * static_cast<std::size_t>(submatrix_size);
 
   boost::mpi::scatter(sub_world, temp_vec_1, block_1.data(), static_cast<int>(block_data_size), 0);
   boost::mpi::scatter(sub_world, temp_vec_2, block_2.data(), static_cast<int>(block_data_size), 0);
