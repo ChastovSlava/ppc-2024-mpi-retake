@@ -5,11 +5,7 @@
 
 #include <algorithm>
 #include <boost/mpi/collectives.hpp>
-#include <boost/mpi/collectives/broadcast.hpp>
-#include <boost/mpi/collectives/gather.hpp>
-#include <boost/mpi/collectives/scatter.hpp>
 #include <boost/mpi/communicator.hpp>
-#include <boost/mpi/request.hpp>
 #include <cmath>
 #include <vector>
 
@@ -77,6 +73,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
   }
 
   MPI_Comm sub_comm = MPI_COMM_NULL;
+  ;
   MPI_Comm_split(world_, group_color, rank, &sub_comm);
 
   if (group_color == MPI_UNDEFINED) {
@@ -114,7 +111,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
 
   std::vector<double> block_1(submatrix_size * submatrix_size);
   std::vector<double> block_2(submatrix_size * submatrix_size);
-  std::vector<double> local_c(submatrix_size * submatrix_size, 0.0);
+  std::vector<double> local_C(submatrix_size * submatrix_size, 0.0);
   std::vector<double> collected_vec(total_elements_);
 
   boost::mpi::scatter(sub_world, temp_vec_1, block_1.data(), submatrix_size * submatrix_size, 0);
@@ -145,9 +142,12 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
     send_req = sub_world.isend(send_vec_1_rank, 0, block_1.data(), block_1.size());
     recv_req = sub_world.irecv(recv_vec_1_rank, 0, buffer_1.data(), buffer_1.size());
 
-    // Ожидание завершения операций
-    send_req.wait();
-    recv_req.wait();
+    if (send_req.active() && recv_req.active()) {
+      send_req.wait();
+      recv_req.wait();
+    } else {
+      return false;
+    }
 
     block_1 = buffer_1;
   }
@@ -160,9 +160,12 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
     send_req_2 = sub_world.isend(send_vec_2_rank, 1, block_2.data(), block_2.size());
     recv_req_2 = sub_world.irecv(recv_vec_2_rank, 1, buffer_2.data(), buffer_2.size());
 
-    // Ожидание завершения операций
-    send_req_2.wait();
-    recv_req_2.wait();
+    if (send_req_2.active() && recv_req_2.active()) {
+      send_req_2.wait();
+      recv_req_2.wait();
+    } else {
+      return false;
+    }
 
     block_2 = buffer_2;
   }
@@ -170,7 +173,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
   for (int i = 0; i < submatrix_size; ++i) {
     for (int j = 0; j < submatrix_size; ++j) {
       for (int k = 0; k < submatrix_size; ++k) {
-        local_c[(i * submatrix_size) + j] += block_1[(i * submatrix_size) + k] * block_2[(k * submatrix_size) + j];
+        local_C[(i * submatrix_size) + j] += block_1[(i * submatrix_size) + k] * block_2[(k * submatrix_size) + j];
       }
     }
   }
@@ -190,11 +193,14 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
     send_req_2 = sub_world.isend(send_vec_2_rank, 1, block_2.data(), block_2.size());
     recv_req_2 = sub_world.irecv(recv_vec_2_rank, 1, buffer_2.data(), buffer_2.size());
 
-    // Ожидание завершения операций
-    send_req_1.wait();
-    recv_req_1.wait();
-    send_req_2.wait();
-    recv_req_2.wait();
+    if (send_req_1.active() && recv_req_1.active() && send_req_2.active() && recv_req_2.active()) {
+      send_req_1.wait();
+      recv_req_1.wait();
+      send_req_2.wait();
+      recv_req_2.wait();
+    } else {
+      return false;
+    }
 
     block_1 = buffer_1;
     block_2 = buffer_2;
@@ -202,13 +208,13 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
     for (int i = 0; i < submatrix_size; ++i) {
       for (int j = 0; j < submatrix_size; ++j) {
         for (int k = 0; k < submatrix_size; ++k) {
-          local_c[(i * submatrix_size) + j] += block_1[(i * submatrix_size) + k] * block_2[(k * submatrix_size) + j];
+          local_C[(i * submatrix_size) + j] += block_1[(i * submatrix_size) + k] * block_2[(k * submatrix_size) + j];
         }
       }
     }
   }
 
-  boost::mpi::gather(sub_world, local_c.data(), local_c.size(), collected_vec, 0);
+  boost::mpi::gather(sub_world, local_C.data(), local_C.size(), collected_vec, 0);
   if (rank == 0) {
     for (int block_row = 0; block_row < block_size; ++block_row) {
       for (int block_col = 0; block_col < block_size; ++block_col) {
