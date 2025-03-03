@@ -24,17 +24,21 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PrepareComputation(boost::mpi:
 
   block_size = std::floor(std::sqrt(size));
   while (block_size > 0) {
-    if (matrix_size_ % block_size == 0) break;
+    if (matrix_size_ % block_size == 0) {
+      break
+    };
     --block_size;
   }
   block_size = std::max(block_size, 1);
   submatrix_size = static_cast<int>(matrix_size_ / block_size);
 
   int group_color = (rank < block_size * block_size) ? 1 : MPI_UNDEFINED;
-  MPI_Comm sub_comm;
+  MPI_Comm sub_comm = nullptr;
   MPI_Comm_split(world_, group_color, rank, &sub_comm);
 
-  if (group_color == MPI_UNDEFINED) return false;
+  if (group_color == MPI_UNDEFINED) {
+    return false
+  };
 
   sub_world = boost::mpi::communicator(sub_comm, boost::mpi::comm_take_ownership);
   return true;
