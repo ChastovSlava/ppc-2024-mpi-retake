@@ -33,7 +33,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PrepareComputation(boost::mpi:
   submatrix_size = static_cast<int>(matrix_size_ / block_size);
 
   int group_color = (rank < block_size * block_size) ? 1 : MPI_UNDEFINED;
-  MPI_Comm sub_comm = nullptr;
+  MPI_Comm sub_comm = MPI_COMM_NULL;
   MPI_Comm_split(world_, group_color, rank, &sub_comm);
 
   if (group_color == MPI_UNDEFINED) {
