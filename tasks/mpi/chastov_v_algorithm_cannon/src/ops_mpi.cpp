@@ -25,7 +25,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PrepareComputation(boost::mpi:
   block_size = std::floor(std::sqrt(size));
   while (block_size > 0) {
     if (matrix_size_ % block_size == 0) {
-      break
+      break;
     };
     --block_size;
   }
@@ -37,7 +37,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PrepareComputation(boost::mpi:
   MPI_Comm_split(world_, group_color, rank, &sub_comm);
 
   if (group_color == MPI_UNDEFINED) {
-    return false
+    return false;
   };
 
   sub_world = boost::mpi::communicator(sub_comm, boost::mpi::comm_take_ownership);
