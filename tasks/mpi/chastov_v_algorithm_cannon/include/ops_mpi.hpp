@@ -27,7 +27,8 @@ class TestTaskMPI : public ppc::core::Task {
 
   bool PrepareComputation(boost::mpi::communicator& sub_world, int& submatrix_size, int& block_size);
   bool InitializeBlocks(boost::mpi::communicator& sub_world, int submatrix_size, int block_size);
-  bool CommunicateBlocks(boost::mpi::communicator& sub_world, int submatrix_size, int block_size);
+  bool CommunicateAndCompute(boost::mpi::communicator& sub_world, int submatrix_size, int block_size);
+  bool ShiftBlocks(boost::mpi::communicator& sub_world, int submatrix_size, int block_size);
   bool ComputeAndGather(boost::mpi::communicator& sub_world, int submatrix_size, int block_size);
 };
 
