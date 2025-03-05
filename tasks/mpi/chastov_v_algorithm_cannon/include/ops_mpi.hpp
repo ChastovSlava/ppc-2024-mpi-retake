@@ -22,9 +22,12 @@ class TestTaskMPI : public ppc::core::Task {
  private:
   size_t matrix_size_{}, total_elements_{};
   std::vector<double> first_matrix_, second_matrix_, result_matrix_;
+  std::vector<double> block_1, block_2, local_c;
   boost::mpi::communicator world_;
 
   bool PrepareComputation(boost::mpi::communicator& sub_world, int& submatrix_size, int& block_size);
+  bool InitializeBlocks(boost::mpi::communicator& sub_world, int submatrix_size, int block_size);
+  bool CommunicateAndCompute(boost::mpi::communicator& sub_world, int submatrix_size, int block_size);
 };
 
 }  // namespace chastov_v_algorithm_cannon_mpi

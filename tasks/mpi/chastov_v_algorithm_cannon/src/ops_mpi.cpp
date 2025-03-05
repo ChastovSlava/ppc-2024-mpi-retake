@@ -44,6 +44,137 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PrepareComputation(boost::mpi:
   return true;
 }
 
+bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::InitializeBlocks(boost::mpi::communicator& sub_world,
+                                                                   int submatrix_size, int block_size) {
+  int rank = sub_world.rank();
+
+  std::vector<double> temp_vec_1(total_elements_);
+  std::vector<double> temp_vec_2(total_elements_);
+
+  if (rank == 0) {
+    int index = 0;
+    for (int block_row = 0; block_row < block_size; ++block_row) {
+      for (int block_col = 0; block_col < block_size; ++block_col) {
+        for (int i = 0; i < submatrix_size; ++i) {
+          for (int j = 0; j < submatrix_size; ++j) {
+            temp_vec_1[index + (i * submatrix_size) + j] =
+                first_matrix_[((block_row * submatrix_size + i) * matrix_size_) + (block_col * submatrix_size + j)];
+          }
+        }
+
+        for (int i = 0; i < submatrix_size; ++i) {
+          for (int j = 0; j < submatrix_size; ++j) {
+            temp_vec_2[index + (i * submatrix_size) + j] =
+                second_matrix_[((block_row * submatrix_size + i) * matrix_size_) + (block_col * submatrix_size + j)];
+          }
+        }
+        index += submatrix_size * submatrix_size;
+      }
+    }
+  }
+
+  auto block_data_size = static_cast<std::size_t>(submatrix_size) * submatrix_size;
+  std::vector<double> block_1(block_data_size), block_2(block_data_size);
+
+  boost::mpi::scatter(sub_world, temp_vec_1, block_1.data(), static_cast<int>(block_data_size), 0);
+  boost::mpi::scatter(sub_world, temp_vec_2, block_2.data(), static_cast<int>(block_data_size), 0);
+
+  this->block_1 = std::move(block_1);
+  this->block_2 = std::move(block_2);
+  this->local_c = std::vector<double>(block_data_size, 0.0);
+
+  return true;
+}
+
+bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::CommunicateAndCompute(boost::mpi::communicator& sub_world,
+                                                                        int submatrix_size, int block_size) {
+  int rank = sub_world.rank();
+  int size = sub_world.size();
+
+  int row = rank / block_size;
+  int col = rank % block_size;
+
+  int send_vec_1_rank = (row * block_size) + ((col + block_size - 1) % block_size);
+  int recv_vec_1_rank = (row * block_size) + ((col + 1) % block_size);
+  if (send_vec_1_rank >= size || recv_vec_1_rank >= size) return false;
+
+  int send_vec_2_rank = col + (block_size * ((row + block_size - 1) % block_size));
+  int recv_vec_2_rank = col + (block_size * ((row + 1) % block_size));
+  if (send_vec_2_rank >= size || recv_vec_2_rank >= size) return false;
+
+  for (int i = 0; i < row; ++i) {
+    boost::mpi::request send_req = sub_world.isend(send_vec_1_rank, 0, block_1.data(), block_1.size());
+    std::vector<double> buffer_1(block_1.size());
+    boost::mpi::request recv_req = sub_world.irecv(recv_vec_1_rank, 0, buffer_1.data(), buffer_1.size());
+    send_req.wait();
+    recv_req.wait();
+    block_1 = std::move(buffer_1);
+  }
+
+  for (int i = 0; i < col; ++i) {
+    boost::mpi::request send_req = sub_world.isend(send_vec_2_rank, 1, block_2.data(), block_2.size());
+    std::vector<double> buffer_2(block_2.size());
+    boost::mpi::request recv_req = sub_world.irecv(recv_vec_2_rank, 1, buffer_2.data(), buffer_2.size());
+    send_req.wait();
+    recv_req.wait();
+    block_2 = std::move(buffer_2);
+  }
+
+  for (int iter = 0; iter < block_size - 1; ++iter) {
+    for (int i = 0; i < submatrix_size; ++i) {
+      for (int j = 0; j < submatrix_size; ++j) {
+        local_c[i * submatrix_size + j] = 0.0;
+        for (int k = 0; k < submatrix_size; ++k) {
+          local_c[i * submatrix_size + j] += block_1[i * submatrix_size + k] * block_2[k * submatrix_size + j];
+        }
+      }
+    }
+
+    std::vector<double> buffer_1(block_1.size()), buffer_2(block_2.size());
+    boost::mpi::request send_req_1 = sub_world.isend(send_vec_1_rank, 0, block_1.data(), block_1.size());
+    boost::mpi::request recv_req_1 = sub_world.irecv(recv_vec_1_rank, 0, buffer_1.data(), buffer_1.size());
+    boost::mpi::request send_req_2 = sub_world.isend(send_vec_2_rank, 1, block_2.data(), block_2.size());
+    boost::mpi::request recv_req_2 = sub_world.irecv(recv_vec_2_rank, 1, buffer_2.data(), buffer_2.size());
+
+    send_req_1.wait();
+    recv_req_1.wait();
+    send_req_2.wait();
+    recv_req_2.wait();
+
+    block_1 = std::move(buffer_1);
+    block_2 = std::move(buffer_2);
+  }
+
+  for (int i = 0; i < submatrix_size; ++i) {
+    for (int j = 0; j < submatrix_size; ++j) {
+      for (int k = 0; k < submatrix_size; ++k) {
+        local_c[i * submatrix_size + j] += block_1[i * submatrix_size + k] * block_2[k * submatrix_size + j];
+      }
+    }
+  }
+
+  std::vector<double> collected_vec(total_elements_);
+  boost::mpi::gather(sub_world, local_c.data(), local_c.size(), collected_vec, 0);
+
+  if (rank == 0) {
+    for (int block_row = 0; block_row < block_size; ++block_row) {
+      for (int block_col = 0; block_col < block_size; ++block_col) {
+        int block_index = (block_row * block_size + block_col) * submatrix_size * submatrix_size;
+        for (int i = 0; i < submatrix_size; ++i) {
+          for (int j = 0; j < submatrix_size; ++j) {
+            int global_row = block_row * submatrix_size + i;
+            int global_col = block_col * submatrix_size + j;
+            result_matrix_[global_row * matrix_size_ + global_col] =
+                collected_vec[block_index + i * submatrix_size + j];
+          }
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PreProcessingImpl() {
   if (world_.rank() == 0) {
     auto* first = reinterpret_cast<double*>(task_data->inputs[0]);
@@ -83,7 +214,6 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::ValidationImpl() {
   return true;
 }
 
-// NOLINTBEGIN
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
   boost::mpi::communicator sub_world;
   int block_size, submatrix_size;
@@ -92,164 +222,12 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::RunImpl() {
     return true;
   }
 
-  int rank = sub_world.rank();
-  int size = sub_world.size();
-
-  std::vector<double> temp_vec_1(total_elements_);
-  std::vector<double> temp_vec_2(total_elements_);
-  if (rank == 0) {
-    int index = 0;
-    for (int block_row = 0; block_row < block_size; ++block_row) {
-      for (int block_col = 0; block_col < block_size; ++block_col) {
-        for (int i = 0; i < submatrix_size; ++i) {
-          for (int j = 0; j < submatrix_size; ++j) {
-            temp_vec_1[index + (i * submatrix_size) + j] =
-                first_matrix_[((block_row * submatrix_size + i) * matrix_size_) + (block_col * submatrix_size + j)];
-          }
-        }
-
-        for (int i = 0; i < submatrix_size; ++i) {
-          for (int j = 0; j < submatrix_size; ++j) {
-            temp_vec_2[index + (i * submatrix_size) + j] =
-                second_matrix_[((block_row * submatrix_size + i) * matrix_size_) + (block_col * submatrix_size + j)];
-          }
-        }
-
-        index += submatrix_size * submatrix_size;
-      }
-    }
-  }
-
-  std::vector<double> block_1(submatrix_size * submatrix_size);
-  std::vector<double> block_2(submatrix_size * submatrix_size);
-  std::vector<double> local_c(submatrix_size * submatrix_size, 0.0);
-  std::vector<double> collected_vec(total_elements_);
-
-  auto block_data_size = static_cast<std::size_t>(submatrix_size) * static_cast<std::size_t>(submatrix_size);
-
-  boost::mpi::scatter(sub_world, temp_vec_1, block_1.data(), static_cast<int>(block_data_size), 0);
-  boost::mpi::scatter(sub_world, temp_vec_2, block_2.data(), static_cast<int>(block_data_size), 0);
-
-  int row = rank / block_size;
-  int col = rank % block_size;
-
-  int send_vec_1_rank = (row * block_size) + ((col + block_size - 1) % block_size);
-  int recv_vec_1_rank = (row * block_size) + ((col + 1) % block_size);
-
-  if (send_vec_1_rank >= size || recv_vec_1_rank >= size) {
+  if (!InitializeBlocks(sub_world, submatrix_size, block_size)) {
     return false;
   }
 
-  int send_vec_2_rank = col + (block_size * ((row + block_size - 1) % block_size));
-  int recv_vec_2_rank = col + (block_size * ((row + 1) % block_size));
-
-  if (send_vec_2_rank >= size || recv_vec_2_rank >= size) {
-    return false;
-  }
-
-  for (int i = 0; i < row; ++i) {
-    boost::mpi::request send_req;
-    boost::mpi::request recv_req;
-
-    std::vector<double> buffer_1(block_1.size());
-    send_req = sub_world.isend(send_vec_1_rank, 0, block_1.data(), static_cast<int>(block_data_size));
-    recv_req = sub_world.irecv(recv_vec_1_rank, 0, buffer_1.data(), static_cast<int>(block_data_size));
-
-    if (send_req.active() && recv_req.active()) {
-      send_req.wait();
-      recv_req.wait();
-    } else {
-      return false;
-    }
-
-    block_1 = buffer_1;
-  }
-
-  for (int i = 0; i < col; ++i) {
-    boost::mpi::request send_req_2;
-    boost::mpi::request recv_req_2;
-
-    std::vector<double> buffer_2(block_2.size());
-    send_req_2 = sub_world.isend(send_vec_2_rank, 1, block_2.data(), static_cast<int>(block_data_size));
-    recv_req_2 = sub_world.irecv(recv_vec_2_rank, 1, buffer_2.data(), static_cast<int>(block_data_size));
-
-    if (send_req_2.active() && recv_req_2.active()) {
-      send_req_2.wait();
-      recv_req_2.wait();
-    } else {
-      return false;
-    }
-
-    block_2 = buffer_2;
-  }
-
-  for (int i = 0; i < submatrix_size; ++i) {
-    for (int j = 0; j < submatrix_size; ++j) {
-      for (int k = 0; k < submatrix_size; ++k) {
-        local_c[(i * submatrix_size) + j] += block_1[(i * submatrix_size) + k] * block_2[(k * submatrix_size) + j];
-      }
-    }
-  }
-
-  for (int iter = 0; iter < block_size - 1; ++iter) {
-    boost::mpi::request send_req_1;
-    boost::mpi::request recv_req_1;
-
-    boost::mpi::request send_req_2;
-    boost::mpi::request recv_req_2;
-
-    std::vector<double> buffer_1(block_1.size());
-    send_req_1 = sub_world.isend(send_vec_1_rank, 0, block_1.data(), static_cast<int>(block_data_size));
-    recv_req_1 = sub_world.irecv(recv_vec_1_rank, 0, buffer_1.data(), static_cast<int>(block_data_size));
-
-    std::vector<double> buffer_2(block_2.size());
-    send_req_2 = sub_world.isend(send_vec_2_rank, 1, block_2.data(), static_cast<int>(block_data_size));
-    recv_req_2 = sub_world.irecv(recv_vec_2_rank, 1, buffer_2.data(), static_cast<int>(block_data_size));
-
-    if (send_req_1.active() && recv_req_1.active() && send_req_2.active() && recv_req_2.active()) {
-      send_req_1.wait();
-      recv_req_1.wait();
-      send_req_2.wait();
-      recv_req_2.wait();
-    } else {
-      return false;
-    }
-
-    block_1 = buffer_1;
-    block_2 = buffer_2;
-
-    for (int i = 0; i < submatrix_size; ++i) {
-      for (int j = 0; j < submatrix_size; ++j) {
-        for (int k = 0; k < submatrix_size; ++k) {
-          local_c[(i * submatrix_size) + j] += block_1[(i * submatrix_size) + k] * block_2[(k * submatrix_size) + j];
-        }
-      }
-    }
-  }
-
-  auto local_c_size = local_c.size();
-  boost::mpi::gather(sub_world, local_c.data(), static_cast<int>(local_c_size), collected_vec, 0);
-
-  if (rank == 0) {
-    for (int block_row = 0; block_row < block_size; ++block_row) {
-      for (int block_col = 0; block_col < block_size; ++block_col) {
-        int block_rank = (block_row * block_size) + block_col;
-        int block_index = block_rank * submatrix_size * submatrix_size;
-
-        for (int i = 0; i < submatrix_size; ++i) {
-          for (int j = 0; j < submatrix_size; ++j) {
-            int global_row = (block_row * submatrix_size) + i;
-            int global_col = (block_col * submatrix_size) + j;
-            result_matrix_[(global_row * matrix_size_) + global_col] =
-                collected_vec[block_index + (i * submatrix_size) + j];
-          }
-        }
-      }
-    }
-  }
-  return true;
+  return CommunicateAndCompute(sub_world, submatrix_size, block_size);
 }
-// NOLINTEND
 
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PostProcessingImpl() {
   if (world_.rank() == 0) {
