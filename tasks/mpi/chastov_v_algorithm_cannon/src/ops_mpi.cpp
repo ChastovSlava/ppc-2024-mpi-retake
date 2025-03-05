@@ -15,6 +15,20 @@
 #include <utility>
 #include <vector>
 
+namespace {
+void MultiplyBlocks(const std::vector<double>& a, const std::vector<double>& b, std::vector<double>& result, int size) {
+  for (int i = 0; i < size; ++i) {
+    for (int j = 0; j < size; ++j) {
+      double sum = 0.0;
+      for (int k = 0; k < size; ++k) {
+        sum += a[(i * size) + k] * b[(k * size) + j];
+      }
+      result[(i * size) + j] += sum;
+    }
+  }
+}
+}  // namespace
+
 bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::PrepareComputation(boost::mpi::communicator& sub_world,
                                                                      int& submatrix_size, int& block_size) {
   int rank = world_.rank();
@@ -138,14 +152,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::ComputeAndGather(boost::mpi::c
   int rank = sub_world.rank();
 
   for (int iter = 0; iter < block_size - 1; ++iter) {
-    for (int i = 0; i < submatrix_size; ++i) {
-      for (int j = 0; j < submatrix_size; ++j) {
-        local_c_[(i * submatrix_size) + j] = 0.0;
-        for (int k = 0; k < submatrix_size; ++k) {
-          local_c_[(i * submatrix_size) + j] += block_1_[(i * submatrix_size) + k] * block_2_[(k * submatrix_size) + j];
-        }
-      }
-    }
+    MultiplyBlocks(block_1_, block_2_, local_c_, submatrix_size);
 
     std::vector<double> buffer_1(block_1_.size());
     std::vector<double> buffer_2(block_2_.size());
@@ -165,13 +172,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::ComputeAndGather(boost::mpi::c
     block_2_ = std::move(buffer_2);
   }
 
-  for (int i = 0; i < submatrix_size; ++i) {
-    for (int j = 0; j < submatrix_size; ++j) {
-      for (int k = 0; k < submatrix_size; ++k) {
-        local_c_[(i * submatrix_size) + j] += block_1_[(i * submatrix_size) + k] * block_2_[(k * submatrix_size) + j];
-      }
-    }
-  }
+  MultiplyBlocks(block_1_, block_2_, local_c_, submatrix_size);
 
   std::vector<double> collected_vec(total_elements_);
   boost::mpi::gather(sub_world, local_c_.data(), static_cast<int>(local_c_.size()), collected_vec, 0);
