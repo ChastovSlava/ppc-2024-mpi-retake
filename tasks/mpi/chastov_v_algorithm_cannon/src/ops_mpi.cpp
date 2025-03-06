@@ -9,7 +9,6 @@
 #include <boost/mpi/collectives/gather.hpp>
 #include <boost/mpi/collectives/scatter.hpp>
 #include <boost/mpi/communicator.hpp>
-#include <boost/mpi/operations.hpp>
 #include <boost/mpi/request.hpp>
 #include <cmath>
 #include <cstddef>
@@ -167,7 +166,7 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::ComputeAndGather(boost::mpi::c
     reqs[1] = sub_world.irecv(recv_vec_1_rank, 0, buffer_1.data(), static_cast<int>(buffer_1.size()));
     reqs[2] = sub_world.isend(send_vec_2_rank, 1, block_2_.data(), static_cast<int>(block_2_.size()));
     reqs[3] = sub_world.irecv(recv_vec_2_rank, 1, buffer_2.data(), static_cast<int>(buffer_2.size()));
-    boost::mpi::wait_all(reqs, reqs + 4);
+    boost::mpi::wait_all(reqs, reqs + 4);  // NOLINT
 
     block_1_ = std::move(buffer_1);
     block_2_ = std::move(buffer_2);
