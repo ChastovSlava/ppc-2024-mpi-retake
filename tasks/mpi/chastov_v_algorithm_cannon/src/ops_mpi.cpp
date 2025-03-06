@@ -9,6 +9,7 @@
 #include <boost/mpi/collectives/gather.hpp>
 #include <boost/mpi/collectives/scatter.hpp>
 #include <boost/mpi/communicator.hpp>
+#include <boost/mpi/operations.hpp>
 #include <boost/mpi/request.hpp>
 #include <cmath>
 #include <cstddef>
