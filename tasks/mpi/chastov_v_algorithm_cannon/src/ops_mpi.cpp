@@ -156,10 +156,10 @@ bool chastov_v_algorithm_cannon_mpi::TestTaskMPI::ComputeAndGather(boost::mpi::c
 
     std::vector<double> buffer_1(block_1_.size());
     std::vector<double> buffer_2(block_2_.size());
-    int send_vec_1_rank = (rank / block_size) * block_size + ((rank % block_size + block_size - 1) % block_size);
-    int recv_vec_1_rank = (rank / block_size) * block_size + ((rank % block_size + 1) % block_size);
-    int send_vec_2_rank = (rank % block_size) + block_size * ((rank / block_size + block_size - 1) % block_size);
-    int recv_vec_2_rank = (rank % block_size) + block_size * ((rank / block_size + 1) % block_size);
+    int send_vec_1_rank = ((rank / block_size) * block_size) + ((rank % block_size + block_size - 1) % block_size);
+    int recv_vec_1_rank = ((rank / block_size) * block_size) + ((rank % block_size + 1) % block_size);
+    int send_vec_2_rank = (rank % block_size) + (block_size * ((rank / block_size + block_size - 1) % block_size));
+    int recv_vec_2_rank = (rank % block_size) + (block_size * ((rank / block_size + 1) % block_size));
 
     boost::mpi::request reqs[4];
     reqs[0] = sub_world.isend(send_vec_1_rank, 0, block_1_.data(), static_cast<int>(block_1_.size()));
